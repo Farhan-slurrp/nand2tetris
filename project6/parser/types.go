@@ -1,16 +1,17 @@
 package parser
 
 type Parser struct {
-	filename            string
-	current_instruction *string
+	file               [][]byte
+	currentInstruction int
+	currentLine        string
 }
 
 type IParser interface {
-	hasMoreLines() bool
-	advance()
-	instructionType() string
-	symbol() string
-	dest() string
-	comp() string
-	jump() string
+	HasMoreLines() bool
+	Advance()
+	InstructionType() string
+	Symbol() string
+	Dest() string
+	Comp() string
+	Jump() string
 }
