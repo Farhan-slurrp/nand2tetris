@@ -5,7 +5,8 @@ type SymbolTable struct {
 }
 
 type ISymbolTable interface {
-	addEntry(symbol string, address int)
-	contains(key string) bool
-	getAddress(key string) int
+	AddEntry(symbol string, address int)
+	Contains(key string) bool
+	GetAddress(key string) int
+	MapKey(value int) (string, bool)
 }

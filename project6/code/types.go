@@ -1,11 +1,13 @@
 package code
 
 type Code struct {
-	instruction string
+	destInstruction string
+	compInstruction string
+	jumpInstruction string
 }
 
 type ICode interface {
-	dest() string
-	comp() string
-	jump() string
+	Dest() string
+	Comp() (string, string)
+	Jump() string
 }
