@@ -2,6 +2,8 @@ package parser
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 
 	"github.com/Farhan-slurrp/nand2tetris/project6/code"
@@ -9,12 +11,13 @@ import (
 	"github.com/Farhan-slurrp/nand2tetris/project6/utils"
 )
 
-func NewParser(file [][]byte, table symboltable.ISymbolTable) IParser {
+func NewParser(file [][]byte, table symboltable.ISymbolTable, outputFile *os.File) IParser {
 	return &Parser{
 		file:               file,
 		currentInstruction: -1,
 		currentLine:        "",
 		table:              table,
+		outputFile:         outputFile,
 	}
 }
 
@@ -33,47 +36,46 @@ func (p *Parser) Advance() {
 		}
 		instructionType := p.InstructionType()
 		fmt.Println(instructionType, p.currentLine)
-		if instructionType == "L_INSTRUCTION" {
+		switch it := instructionType; it {
+		case "L_INSTRUCTION":
 			symbol := p.Symbol()
-			if !p.table.Contains(symbol) {
-				address := p.currentInstruction + 1
-				nextLineStr := string(p.file[address])
-				for {
-					if !strings.HasPrefix(nextLineStr, "//") && len(nextLineStr) > 1 {
-						break
-					}
-					address += 1
-					nextLineStr = string(p.file[address])
-				}
-				p.table.AddEntry(symbol, address+1)
-			}
 			binaryCode := fmt.Sprintf("%016b", p.table.GetAddress(symbol))
-			fmt.Println(binaryCode)
-		}
-		if instructionType == "A_INSTRUCTION" {
+			p.outputFile.Write([]byte(binaryCode))
+			p.outputFile.WriteString("\n")
+		case "A_INSTRUCTION":
 			symbol := p.Symbol()
 			if !p.table.Contains(symbol) {
 				address := 16
-				for {
-					_, ok := p.table.MapKey(address)
-					if !ok {
-						break
-					}
+				numberSymbol, err := strconv.Atoi(symbol)
+				if err != nil {
+					for {
+						_, ok := p.table.MapKey(address)
+						if !ok {
+							break
+						}
 
-					address += 1
+						address += 1
+					}
+				} else {
+					address = numberSymbol
 				}
 				p.table.AddEntry(symbol, address)
 			}
 			binaryCode := fmt.Sprintf("%016b", p.table.GetAddress(symbol))
-			fmt.Println(binaryCode)
-		}
-		if instructionType == "C_INSTRUCTION" {
+			p.outputFile.Write([]byte(binaryCode))
+			p.outputFile.WriteString("\n")
+		case "C_INSTRUCTION":
 			code := code.NewCode(p.Dest(), p.Comp(), p.Jump())
 			comp, a := code.Comp()
 			dest := code.Dest()
 			jump := code.Jump()
-			fmt.Printf("111%s%s%s%s\n", a, comp, dest, jump)
+			binaryCode := fmt.Sprintf("111%s%s%s%s", a, comp, dest, jump)
+			p.outputFile.Write([]byte(binaryCode))
+			p.outputFile.WriteString("\n")
+		default:
+			return
 		}
+
 	}
 }
 
@@ -141,4 +143,37 @@ func (p *Parser) Jump() string {
 		return ""
 	}
 	return strings.TrimSpace(splitted[1])
+}
+
+// put L_INSTRUCTION(s) to table
+func (p *Parser) FirstScan() {
+	// clear the output file
+	p.outputFile.Truncate(0)
+	p.outputFile.Seek(0, 0)
+	for idx := range p.file {
+		p.currentInstruction = idx
+		p.currentLine = strings.TrimSpace(string(p.file[p.currentInstruction]))
+		if strings.HasPrefix(p.currentLine, "//") ||
+			len(p.currentLine) == 0 ||
+			len(p.currentLine) == 1 {
+			continue
+		}
+		if p.InstructionType() == "L_INSTRUCTION" {
+			symbol := p.Symbol()
+			if !p.table.Contains(symbol) {
+				address := p.currentInstruction + 1
+				nextLineStr := string(p.file[address])
+				for {
+					if !strings.HasPrefix(nextLineStr, "//") && len(nextLineStr) > 1 {
+						break
+					}
+					address += 1
+					nextLineStr = string(p.file[address])
+				}
+				p.table.AddEntry(symbol, address+1)
+			}
+		}
+	}
+	p.currentInstruction = -1
+	p.currentLine = ""
 }
