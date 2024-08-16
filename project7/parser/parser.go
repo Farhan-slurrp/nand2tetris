@@ -1,5 +1,10 @@
 package parser
 
+import (
+	"strconv"
+	"strings"
+)
+
 type CmdType string
 
 const (
@@ -14,36 +19,96 @@ const (
 	C_CALL       CmdType = "C_CALL"
 )
 
-type Parser struct{}
+type Parser struct {
+	currentCommad int
+	file          [][]byte
+}
 
 type IParser interface {
 	HasMoreLines() bool
-	Advance()
-	commandType() CmdType
-	arg1() string
-	arg2() int
+	Advance() []byte
+	CommandType() CmdType
+	GetArg1() string
+	GetArg2() int
 }
 
-func NewParser() IParser {
-	return &Parser{}
+func NewParser(file [][]byte) IParser {
+	return &Parser{
+		currentCommad: 0,
+		file:          file,
+	}
 }
 
 func (p *Parser) HasMoreLines() bool {
-	return false
+	return p.currentCommad < len(p.file)
 }
 
-func (p *Parser) Advance() {
-	return
+func (p *Parser) Advance() []byte {
+	curr := p.currentCommad
+	p.currentCommad += 1
+	return p.file[curr]
 }
 
-func (p *Parser) commandType() CmdType {
-	return C_ARITHMETIC
+func (p *Parser) CommandType() CmdType {
+	arg0 := strings.Split(p.getCurrentLine(), " ")[0]
+
+	switch arg0 {
+	case "add", "sub", "eq", "gt", "lt", "and", "or", "neg", "not":
+		return C_ARITHMETIC
+	case "push":
+		return C_PUSH
+	case "pop":
+		return C_POP
+	case "label":
+		return C_LABEL
+	case "goto":
+		return C_GOTO
+	case "if-goto":
+		return C_IF
+	case "function":
+		return C_FUNCTION
+	case "return":
+		return C_RETURN
+	case "call":
+		return C_CALL
+	default:
+		panic("cannot get the command type")
+	}
 }
 
-func (p *Parser) arg1() string {
-	return ""
+func (p *Parser) GetArg1() string {
+	commandType := p.CommandType()
+	if commandType == C_RETURN {
+		panic("cannot call the function on return command")
+	}
+
+	arg0 := strings.Split(p.getCurrentLine(), " ")[0]
+	arg1 := strings.Split(p.getCurrentLine(), " ")[1]
+
+	switch commandType {
+	case C_ARITHMETIC:
+		return arg0
+	default:
+		return arg1
+	}
 }
 
-func (p *Parser) arg2() int {
-	return 0
+func (p *Parser) GetArg2() int {
+	commandType := p.CommandType()
+	if commandType != C_PUSH &&
+		commandType != C_POP &&
+		commandType != C_FUNCTION &&
+		commandType != C_CALL {
+		panic("cannot call the function on the command")
+	}
+	arg2 := strings.Split(p.getCurrentLine(), " ")[2]
+	intArg2, err := strconv.Atoi(arg2)
+	if err != nil {
+		panic("command is invalid")
+	}
+	return intArg2
+}
+
+func (p *Parser) getCurrentLine() string {
+	return strings.TrimSpace(string(p.file[p.currentCommad]))
 }
