@@ -30,6 +30,7 @@ type IParser interface {
 	CommandType() CmdType
 	GetArg1() string
 	GetArg2() int
+	GetCurrentLine() string
 }
 
 func NewParser(file [][]byte) IParser {
@@ -50,7 +51,7 @@ func (p *Parser) Advance() []byte {
 }
 
 func (p *Parser) CommandType() CmdType {
-	arg0 := strings.Split(p.getCurrentLine(), " ")[0]
+	arg0 := strings.Split(p.GetCurrentLine(), " ")[0]
 
 	switch arg0 {
 	case "add", "sub", "eq", "gt", "lt", "and", "or", "neg", "not":
@@ -82,15 +83,13 @@ func (p *Parser) GetArg1() string {
 		panic("cannot call the function on return command")
 	}
 
-	arg0 := strings.Split(p.getCurrentLine(), " ")[0]
-	arg1 := strings.Split(p.getCurrentLine(), " ")[1]
-
-	switch commandType {
-	case C_ARITHMETIC:
+	arg0 := strings.Split(p.GetCurrentLine(), " ")[0]
+	if commandType == C_ARITHMETIC {
 		return arg0
-	default:
-		return arg1
 	}
+	arg1 := strings.Split(p.GetCurrentLine(), " ")[1]
+
+	return arg1
 }
 
 func (p *Parser) GetArg2() int {
@@ -101,7 +100,7 @@ func (p *Parser) GetArg2() int {
 		commandType != C_CALL {
 		panic("cannot call the function on the command")
 	}
-	arg2 := strings.Split(p.getCurrentLine(), " ")[2]
+	arg2 := strings.Split(p.GetCurrentLine(), " ")[2]
 	intArg2, err := strconv.Atoi(arg2)
 	if err != nil {
 		panic("command is invalid")
@@ -109,6 +108,6 @@ func (p *Parser) GetArg2() int {
 	return intArg2
 }
 
-func (p *Parser) getCurrentLine() string {
+func (p *Parser) GetCurrentLine() string {
 	return strings.TrimSpace(string(p.file[p.currentCommad]))
 }

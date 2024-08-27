@@ -3,6 +3,7 @@ package codewriter
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/Farhan-slurrp/nand2tetris/compiler/parser"
 )
@@ -13,22 +14,62 @@ type CodeWriter struct {
 }
 
 type ICodeWriter interface {
-	writeArithmetic(command string)
-	writePushPop(command parser.CmdType, segment string, index int)
-	close()
+	Write()
+	Close()
 }
 
-func NewCodeWriter(parser parser.IParser, outputFile *os.File) ICodeWriter {
+var SymbolHash = map[string]string{
+	"local":    "LOCAL",
+	"argument": "ARG",
+	"this":     "THIS",
+	"that":     "THAT",
+	"pointer":  "THIS",
+	"temp":     "5",
+}
+
+func NewCodeWriter(parser parser.IParser, outputFile string) ICodeWriter {
+	out, err := os.OpenFile(fmt.Sprintf("./asm/%s.asm", outputFile), os.O_APPEND|os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
+	if err != nil {
+		fmt.Println("Can't read file:", fmt.Sprintf("./asm/%s.asm", outputFile))
+		panic(err)
+	}
 	// clear the output file
-	outputFile.Truncate(0)
-	outputFile.Seek(0, 0)
+	out.Truncate(0)
+	out.Seek(0, 0)
 	return &CodeWriter{
 		parser:     parser,
-		outputFile: outputFile,
+		outputFile: out,
 	}
 }
 
-func (cw *CodeWriter) writeArithmetic(command string) {
+func (cw *CodeWriter) Close() {
+	cw.outputFile.Close()
+}
+
+func (cw *CodeWriter) Write() {
+	for cw.parser.HasMoreLines() {
+		currentLine := cw.parser.GetCurrentLine()
+		if !strings.HasPrefix((currentLine), "//") &&
+			len(currentLine) != 0 {
+			cw.translate()
+		}
+		cw.parser.Advance()
+	}
+}
+
+func (cw *CodeWriter) translate() {
+	cmd := cw.parser.CommandType()
+	switch cmd {
+	case parser.C_ARITHMETIC:
+		cw.writeArithmetic()
+	case parser.C_POP:
+		cw.writePop()
+	case parser.C_PUSH:
+		cw.writePush()
+	}
+}
+
+func (cw *CodeWriter) writeArithmetic() {
 	arg0 := cw.parser.GetArg1()
 	switch arg0 {
 	case "add":
@@ -52,19 +93,6 @@ func (cw *CodeWriter) writeArithmetic(command string) {
 	}
 }
 
-func (cw *CodeWriter) writePushPop(command parser.CmdType, segment string, index int) {
-	switch command {
-	case "push":
-		cw.writePush()
-	case "pop":
-		cw.writePop()
-	}
-}
-
-func (cw *CodeWriter) close() {
-	cw.outputFile.Close()
-}
-
 func (cw *CodeWriter) arithmetic(symbol string, jumpType string, unary bool) {
 	cw.popStack(true)
 	if !unary {
@@ -75,61 +103,81 @@ func (cw *CodeWriter) arithmetic(symbol string, jumpType string, unary bool) {
 		lineToWrite += "M"
 	}
 	lineToWrite += symbol + "D"
-	cw.writeFile(lineToWrite, "")
+	cw.writeFile(lineToWrite)
 	if jumpType != "" {
 		cw.jump(jumpType)
 	}
-	cw.pushStack(nil)
+	cw.pushStack(-1)
 }
 
 func (cw *CodeWriter) jump(jumpType string) {
-	cw.writeFile("@TRUE_JUMP", "@")
-	cw.writeFile("D; "+jumpType+"\nD=0", "")
-	cw.writeFile("@FALSE_JUMP", "@")
-	cw.writeFile("0;JMP", "")
-	cw.writeFile("(TRUE_JUMP", "(")
-	cw.writeFile("D=-1", "")
-	cw.writeFile("(FALSE_JUMP", "(")
+	cw.writeFile("@TRUE_JUMP")
+	cw.writeFile("D; " + jumpType + "\nD=0")
+	cw.writeFile("@FALSE_JUMP")
+	cw.writeFile("0;JMP")
+	cw.writeFile("(TRUE_JUMP")
+	cw.writeFile("D=-1")
+	cw.writeFile("(FALSE_JUMP")
 }
 
-func (cw *CodeWriter) loadMemory() {
-	// TO DO
+func (cw *CodeWriter) loadMemory(saveFromR13 bool) {
+	arg1 := cw.parser.GetArg1()
+	arg2 := cw.parser.GetArg2()
+	cw.writeFile(fmt.Sprintf("@%d", arg2))
+	cw.writeFile("D=A")
+	cw.writeFile(SymbolHash[arg1])
+
+	if arg1 == "temp" || arg1 == "pointer" {
+		cw.writeFile("AD=A+D")
+	} else {
+		cw.writeFile("AD=M+D")
+	}
+
+	if saveFromR13 {
+		cw.writeFile("@14\nM=D\n@13\nD=M\n@14\nA=M\nM=D")
+	} else {
+		cw.writeFile("D=M")
+	}
 }
 
 func (cw *CodeWriter) loadStatic(pop bool) {
 	arg2 := cw.parser.GetArg2()
-	cw.writeFile(fmt.Sprintf("@%d", arg2), "")
+	cw.writeFile(fmt.Sprintf("@%d", arg2))
 	if pop {
-		cw.writeFile("M=D", "")
+		cw.writeFile("M=D")
 	} else {
-		cw.writeFile("D=M", "")
+		cw.writeFile("D=M")
 	}
 }
 
 func (cw *CodeWriter) popStack(saveToD bool) {
-	cw.writeFile("@SP\nM=M-1\nA=M", "")
+	cw.writeFile("@SP\nM=M-1\nA=M")
 	if saveToD {
-		cw.writeFile("D=M\n", "")
+		cw.writeFile("D=M")
 	}
 }
 
-func (cw *CodeWriter) pushStack(num *int) {
-	if num != nil {
-		cw.writeFile(fmt.Sprintf("@%d\nD=A", num), "")
+func (cw *CodeWriter) pushStack(num int) {
+	if num >= 0 {
+		cw.writeFile(fmt.Sprintf("@%d\nD=A", num))
 	}
-	cw.writeFile("@SP\nA=M\nM=D\n@SP\nM=M+1", "")
+	cw.writeFile("@SP\nA=M\nM=D\n@SP\nM=M+1")
 }
 
-func (cw *CodeWriter) writeFile(str string, label string) {
-	if label == "@" {
-		cw.outputFile.WriteString(fmt.Sprintf("%s\n", str))
-	} else {
-		cw.outputFile.WriteString(fmt.Sprintf("%s)\n", str))
-	}
+func (cw *CodeWriter) writeFile(str string) {
+	cw.outputFile.WriteString(fmt.Sprintf("%s\n", str))
 }
 
 func (cw *CodeWriter) writePop() {
-	// TO DO
+	cw.popStack(true)
+	arg1 := cw.parser.GetArg1()
+	if arg1 == "parser" {
+		cw.loadStatic(true)
+	} else {
+		cw.writeFile("@13\nM=D")
+		cw.loadMemory(true)
+	}
+
 }
 
 func (cw *CodeWriter) writePush() {
@@ -138,12 +186,12 @@ func (cw *CodeWriter) writePush() {
 
 	switch arg1 {
 	case "constant":
-		cw.pushStack(&arg2)
+		cw.pushStack(arg2)
 	case "static":
 		cw.loadStatic(false)
-		cw.pushStack(nil)
+		cw.pushStack(-1)
 	default:
-		cw.loadMemory()
-		cw.pushStack(nil)
+		cw.loadMemory(false)
+		cw.pushStack(-1)
 	}
 }
