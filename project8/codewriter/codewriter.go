@@ -68,6 +68,10 @@ func (cw *CodeWriter) translate() {
 		cw.writePop()
 	case parser.C_PUSH:
 		cw.writePush()
+	case parser.C_FUNCTION:
+		cw.writeFunction()
+	case parser.C_RETURN:
+		cw.writeReturn()
 	}
 }
 
@@ -207,8 +211,25 @@ func (cw *CodeWriter) writeGoto(label string) {}
 //lint:ignore U1000 unused function
 func (cw *CodeWriter) writeIf(label string) {}
 
-//lint:ignore U1000 unused function
-func (cw *CodeWriter) writeFunction(label string) {}
+func (cw *CodeWriter) writeFunction() {
+	arg1 := cw.parser.GetArg1()
+	arg2 := cw.parser.GetArg2()
+	cw.writeFile(fmt.Sprintf("(%s)", arg1))
 
-//lint:ignore U1000 unused function
-func (cw *CodeWriter) writeReturn(label string) {}
+	for i := 0; i < arg2; i++ {
+		cw.writeFile("@0\nD=A")
+		cw.pushStack(-1)
+	}
+}
+
+func (cw *CodeWriter) writeReturn() {
+	cw.writeFile("@5\nD=A\n@LCL\nA=M-D\nD=M\n@15\nM=D")
+	cw.popStack(false)
+	cw.writeFile("@ARG\nA=M\nM=D\nD=A+1\n@SP\nM=D")
+	vars := []string{"THAT", "THIS", "ARG", "LCL"}
+	for _, v := range vars {
+		cw.writeFile(fmt.Sprintf("@LCL\nAM=M-1\nD=M\n@%s\nM=D", v))
+	}
+	cw.writeFile("@15\nA=M")
+	cw.writeFile("0;JMP")
+}
