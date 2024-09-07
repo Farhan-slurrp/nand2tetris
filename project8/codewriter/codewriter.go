@@ -9,8 +9,9 @@ import (
 )
 
 type CodeWriter struct {
-	parser     parser.IParser
-	outputFile *os.File
+	parser        parser.IParser
+	outputFile    *os.File
+	functionCount int
 }
 
 type ICodeWriter interface {
@@ -39,8 +40,9 @@ func NewCodeWriter(filename string) ICodeWriter {
 	out.Truncate(0)
 	out.Seek(0, 0)
 	return &CodeWriter{
-		parser:     parser,
-		outputFile: out,
+		parser:        parser,
+		outputFile:    out,
+		functionCount: 1,
 	}
 }
 
@@ -68,8 +70,16 @@ func (cw *CodeWriter) translate() {
 		cw.writePop()
 	case parser.C_PUSH:
 		cw.writePush()
+	case parser.C_LABEL:
+		cw.writeLabel()
+	case parser.C_GOTO:
+		cw.writeGoto()
+	case parser.C_IF:
+		cw.writeIf()
 	case parser.C_FUNCTION:
 		cw.writeFunction()
+	case parser.C_CALL:
+		cw.writeCall(false)
 	case parser.C_RETURN:
 		cw.writeReturn()
 	}
@@ -146,6 +156,16 @@ func (cw *CodeWriter) pushStack(num int) {
 	cw.writeFile("@SP\nA=M\nM=D\n@SP\nM=M+1")
 }
 
+func (cw *CodeWriter) functionInit(nArgs int) {
+	cw.writeFile(fmt.Sprintf("@RETURN%d\nD=A", cw.functionCount))
+	vars := []string{"THAT", "THIS", "ARG", "LCL"}
+	for _, v := range vars {
+		cw.writeFile(fmt.Sprintf("@%s\nD=M", v))
+	}
+	cw.writeFile(fmt.Sprintf("@%d\nD=A\n@SP\nD=M-D\n@ARG\nM=D\n@SP\nD=M\n@LCL\nM=D", nArgs+5))
+	cw.functionCount += 1
+}
+
 func (cw *CodeWriter) writeFile(str string) {
 	cw.outputFile.WriteString(fmt.Sprintf("%s\n", str))
 }
@@ -202,14 +222,23 @@ func (cw *CodeWriter) writePush() {
 	}
 }
 
-//lint:ignore U1000 unused function
-func (cw *CodeWriter) writeLabel(label string) {}
+func (cw *CodeWriter) writeLabel() {
+	arg1 := cw.parser.GetArg1()
+	cw.writeFile(fmt.Sprintf("(%s)", arg1))
+}
 
-//lint:ignore U1000 unused function
-func (cw *CodeWriter) writeGoto(label string) {}
+func (cw *CodeWriter) writeGoto() {
+	arg1 := cw.parser.GetArg1()
+	cw.writeFile(fmt.Sprintf("@%s", arg1))
+	cw.writeFile("0;JMP")
+}
 
-//lint:ignore U1000 unused function
-func (cw *CodeWriter) writeIf(label string) {}
+func (cw *CodeWriter) writeIf() {
+	arg1 := cw.parser.GetArg1()
+	cw.popStack(false)
+	cw.writeFile(fmt.Sprintf("@%s", arg1))
+	cw.writeFile("D;JNE")
+}
 
 func (cw *CodeWriter) writeFunction() {
 	arg1 := cw.parser.GetArg1()
@@ -220,6 +249,22 @@ func (cw *CodeWriter) writeFunction() {
 		cw.writeFile("@0\nD=A")
 		cw.pushStack(-1)
 	}
+}
+
+func (cw *CodeWriter) writeCall(init bool) {
+	arg1 := cw.parser.GetArg1()
+	arg2 := cw.parser.GetArg2()
+	nArgs := arg2
+	if init {
+		nArgs = 0
+	}
+	cw.functionInit(nArgs)
+	if init {
+		cw.writeFile("Sys.init")
+	} else {
+		cw.writeFile(fmt.Sprintf("%s\n0;JMP", arg1))
+	}
+	cw.writeFile(fmt.Sprintf("(RETURN%d)", cw.functionCount-1))
 }
 
 func (cw *CodeWriter) writeReturn() {
