@@ -1,6 +1,8 @@
 package translator
 
 import (
+	"sync"
+
 	"github.com/Farhan-slurrp/nand2tetris/project8/codewriter"
 )
 
@@ -31,7 +33,15 @@ func (t *Translator) Translate(writer codewriter.ICodeWriter) {
 }
 
 func (t *Translator) TranslateAll() {
+	var wg sync.WaitGroup
+	wg.Add(len(t.writers))
+
+	defer wg.Wait()
+
 	for _, writer := range t.writers {
-		t.Translate(writer)
+		go func(w codewriter.ICodeWriter) {
+			defer wg.Done()
+			t.Translate(w)
+		}(writer)
 	}
 }
