@@ -31,7 +31,7 @@ var SymbolHash = map[string]string{
 func NewCodeWriter(filename string) ICodeWriter {
 	parser := parser.NewParser(filename)
 
-	out, err := os.OpenFile(fmt.Sprintf("./asm/%s.asm", filename), os.O_APPEND|os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
+	out, err := os.OpenFile(fmt.Sprintf("./test/%s.asm", filename), os.O_APPEND|os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
 	if err != nil {
 		fmt.Println("Can't read file:", fmt.Sprintf("./asm/%s.asm", filename))
 		panic(err)
@@ -39,6 +39,7 @@ func NewCodeWriter(filename string) ICodeWriter {
 	// clear the output file
 	out.Truncate(0)
 	out.Seek(0, 0)
+
 	return &CodeWriter{
 		parser:        parser,
 		outputFile:    out,
@@ -79,7 +80,7 @@ func (cw *CodeWriter) translate() {
 	case parser.C_FUNCTION:
 		cw.writeFunction()
 	case parser.C_CALL:
-		cw.writeCall(false)
+		cw.writeCall()
 	case parser.C_RETURN:
 		cw.writeReturn()
 	}
@@ -117,7 +118,7 @@ func (cw *CodeWriter) loadMemory(saveFromR13 bool) {
 	arg2 := cw.parser.GetArg2()
 	cw.writeFile(fmt.Sprintf("@%d", arg2))
 	cw.writeFile("D=A")
-	cw.writeFile(SymbolHash[arg1])
+	cw.writeFile(fmt.Sprintf("@%s", SymbolHash[arg1]))
 
 	if arg1 == "temp" || arg1 == "pointer" {
 		cw.writeFile("AD=A+D")
@@ -251,19 +252,12 @@ func (cw *CodeWriter) writeFunction() {
 	}
 }
 
-func (cw *CodeWriter) writeCall(init bool) {
+func (cw *CodeWriter) writeCall() {
 	arg1 := cw.parser.GetArg1()
 	arg2 := cw.parser.GetArg2()
-	nArgs := arg2
-	if init {
-		nArgs = 0
-	}
-	cw.functionInit(nArgs)
-	if init {
-		cw.writeFile("Sys.init")
-	} else {
-		cw.writeFile(fmt.Sprintf("%s\n0;JMP", arg1))
-	}
+
+	cw.functionInit(arg2)
+	cw.writeFile(fmt.Sprintf("%s\n0;JMP", arg1))
 	cw.writeFile(fmt.Sprintf("(RETURN%d)", cw.functionCount-1))
 }
 

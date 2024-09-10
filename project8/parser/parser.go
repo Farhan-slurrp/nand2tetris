@@ -37,7 +37,7 @@ type IParser interface {
 }
 
 func NewParser(filename string) IParser {
-	file, err := os.ReadFile(fmt.Sprintf("./vm/%s.vm", filename))
+	file, err := os.ReadFile(fmt.Sprintf("./test/%s.vm", filename))
 	if err != nil {
 		fmt.Println("Can't read file:", fmt.Sprintf("./vm/%s.vm", filename))
 		panic(err)
@@ -111,10 +111,7 @@ func (p *Parser) GetArg2() int {
 		panic("cannot call the function on the command")
 	}
 	arg2 := strings.Split(p.GetCurrentLine(), " ")[2]
-	intArg2, err := strconv.Atoi(arg2)
-	if err != nil {
-		panic("command is invalid")
-	}
+	intArg2, _ := strconv.Atoi(arg2)
 	return intArg2
 }
 
